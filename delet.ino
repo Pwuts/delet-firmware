@@ -66,9 +66,6 @@ void loop(void)
 
 int wave(int x) {
     return x < 0 || x > 255 ? 0 : 255 - cos8(x);
-    // x = x % 256;
-    // return x < 0 || x > 255 ? 0 : (x < 128 ? 2*x : 511 - 2*x);
-    // return x < 0 || x > 255 ? 0 : tripulse(x);
 }
 
 int upramp(int x) {
@@ -77,10 +74,6 @@ int upramp(int x) {
 
 int downramp(int x) {
     return 255 - upramp(x);
-}
-
-int tripulse(int x) {
-    return x < 73 ? 3*x : x < 128 ? 170 + x*2/3 : x < 183 ? 255 - (x-128)*2/3 : 3*(255 - x);
 }
 
 void color_wheel(int i) {
@@ -96,9 +89,6 @@ void color_fade(int i) {
 }
 
 void color_walk(int i) {
-    // h = (h + 1) % 256;
-    Serial.print(wave(i + 128 - walk_overlap)); Serial.print(','); Serial.println(wave(i - 384 + 3*walk_overlap));
-
     leds[1] = CHSV(h, 255, min(wave(i + 256 - 2*walk_overlap) + wave(i - 256 + 2*walk_overlap), 255));
     leds[0] = CHSV(h, 255, min(wave(i + 128 - walk_overlap)   + wave(i - 384 + 3*walk_overlap), 255));
     leds[3] = CHSV(h, 255, wave(i));
@@ -118,6 +108,5 @@ void blink_fade(int i) {
     Serial.print(i); Serial.print(':'); Serial.print(h); Serial.print(':'); Serial.println(wave(i));
     if (i == 0) {
         h = (h + 45) % 256;
-        Serial.println("hhhhh");
     }
 }
