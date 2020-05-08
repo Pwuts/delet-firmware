@@ -24,7 +24,7 @@ const int cycle_length[] = {
     512 - 4*walk_overlap,
     256
 };
-const int cycle_int[] = {20, 15, 3, 6, 8, 8};   // cycle step interval per mode
+const int cycle_int[] = {20, 20, 3, 6, 8, 8};   // cycle step interval per mode
 #define N_MODES 6
 
 int mode = MODE_COLOR_WHEEL;
