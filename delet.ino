@@ -6,23 +6,33 @@
 
 #define MODE_COLOR_WHEEL 0
 #define MODE_COLOR_FADE  1
-#define MODE_COLOR_WALK  2
-#define MODE_PROGRESS    3
-#define MODE_BLINK_FADE  4
+#define MODE_PROGRESS    2
+#define MODE_SCANNER     3
+#define MODE_COLOR_WALK  4
+#define MODE_COLOR_BLINK 5
 
-const int overlap = 56;
-
+// waveform overlap
 const int walk_overlap = 72;
-const int cycle_length[] = {256, 256, 512 - 4*walk_overlap, 512 - 3*overlap, 256};
-const int cycle_int[] = {20, 10, 8, 6, 8};
-#define N_MODES 5
+const int progress_overlap = 56;
+const int scanner_overlap = 84;
+
+const int cycle_length[] = {
+    256,
+    256,
+    1152 - 9*progress_overlap,
+    1280 - 10*scanner_overlap,
+    512 - 4*walk_overlap,
+    256
+};
+const int cycle_int[] = {20, 15, 3, 6, 8, 8};   // cycle step interval per mode
+#define N_MODES 6
 
 int mode = MODE_COLOR_WHEEL;
 int mode_reset = 0;
 
 static CRGB leds[4];
 int i = 0;
-int h = 64;
+int h = 64; // hue, not used in every mode
 
 void setup(void)
 {
@@ -51,12 +61,14 @@ void loop(void)
         color_wheel(i);
     } else if (mode == MODE_COLOR_FADE) {
         color_fade(i);
-    } else if (mode == MODE_COLOR_WALK) {
-        color_walk(i);
     } else if (mode == MODE_PROGRESS) {
         progress(i);
-    } else if (mode == MODE_BLINK_FADE) {
-        blink_fade(i);
+    } else if (mode == MODE_SCANNER) {
+        scanner(i);
+    } else if (mode == MODE_COLOR_WALK) {
+        color_walk(i);
+    } else if (mode == MODE_COLOR_BLINK) {
+        color_blink(i);
     }
 
     FastLED.show();
@@ -64,48 +76,72 @@ void loop(void)
     delay(cycle_int[mode]);
 }
 
-int wave(int x) {
+// wave functions
+
+int wave(int x)
+{
     return x < 0 || x > 255 ? 0 : 255 - cos8(x);
 }
 
-int upramp(int x) {
+int upramp(int x)
+{
     return x > 128 ? 255 : wave(x);
 }
 
-int downramp(int x) {
+int downramp(int x)
+{
     return 255 - upramp(x);
 }
 
-void color_wheel(int i) {
+// animations
+
+void color_wheel(int i)
+{
     leds[0] = CHSV(i,               255, 255);
     leds[1] = CHSV((i + 64)  % 255, 255, 255);
     leds[2] = CHSV((i + 128) % 255, 255, 255);
     leds[3] = CHSV((i + 192) % 255, 255, 255);
 }
 
-void color_fade(int i) {
+void color_fade(int i)  // fades between colors continuously
+{
     h = i;
     leds[0] = leds[1] = leds[2] = leds[3] = CHSV(i, 255, 255);
 }
 
-void color_walk(int i) {
-    leds[1] = CHSV(h, 255, min(wave(i + 256 - 2*walk_overlap) + wave(i - 256 + 2*walk_overlap), 255));
-    leds[0] = CHSV(h, 255, min(wave(i + 128 - walk_overlap)   + wave(i - 384 + 3*walk_overlap), 255));
+void progress(int p) { progress(p, progress_overlap); }
+void progress(int p, int o) // wind-on wind-off progress/loading animation
+{
+    leds[0] = CHSV(h, 255, upramp(p)             - upramp(p - 512 + 4*o));
+    leds[3] = CHSV(h, 255, upramp(p - 128 + o)   - upramp(p - 640 + 5*o));
+    leds[2] = CHSV(h, 255, upramp(p - 256 + 2*o) - upramp(p - 768 + 6*o));
+    leds[1] = CHSV(h, 255, upramp(p - 384 + 3*o) - upramp(p - 896 + 7*o));
+}
+
+void scanner(int i) { scanner(2*i, scanner_overlap); }
+void scanner(int i, int o)  // rotary larson scanner :)
+{
+    const int srp = 64;
+    leds[0] = CHSV(h, 255, min(wave(i)             + wave(i - srp - 1024 + 8*o), 255));
+    leds[3] = CHSV(h, 255, min(wave(i - 128 + o)   + wave(i - srp - 896 + 7*o), 255));
+    leds[2] = CHSV(h, 255, min(wave(i - 256 + 2*o) + wave(i - srp - 768 + 6*o), 255));
+    leds[1] = CHSV(h, 255, min(wave(i - 384 + 3*o) + wave(i - srp - 640 + 5*o), 255));
+}
+
+void color_walk(int i) { color_walk(i, walk_overlap); }
+void color_walk(int i, int o)   // rotates and changes color slowly
+{
+    if (i % 10 == 0) h = (h + 1) % 256;
+
+    leds[1] = CHSV(h, 255, min(wave(i + 256 - 2*o) + wave(i - 256 + 2*o), 255));
+    leds[0] = CHSV(h, 255, min(wave(i + 128 - o)   + wave(i - 384 + 3*o), 255));
     leds[3] = CHSV(h, 255, wave(i));
-    leds[2] = CHSV(h, 255, min(wave(i + 384 - 3*walk_overlap) + wave(i - 128 + walk_overlap), 255));
+    leds[2] = CHSV(h, 255, min(wave(i + 384 - 3*o) + wave(i - 128 + o), 255));
 }
 
-void progress(int p) {
-    const int o = overlap/2;
-    leds[0] = CHSV(h, 255, upramp(2*p)               - upramp(2*(p - 256 + 4*o)));
-    leds[3] = CHSV(h, 255, upramp(2*(p - 64 + o))    - upramp(2*(p - 320 + 5*o)));
-    leds[2] = CHSV(h, 255, upramp(2*(p - 128 + 2*o)) - upramp(2*(p - 384 + 6*o)));
-    leds[1] = CHSV(h, 255, upramp(2*(p - 192 + 3*o)) - upramp(2*(p - 448 + 7*o)));
-}
-
-void blink_fade(int i) {
+void color_blink(int i) // changes color between blinks
+{
     leds[0] = leds[1] = leds[2] = leds[3] = CHSV(h, 255, wave(i));
-    Serial.print(i); Serial.print(':'); Serial.print(h); Serial.print(':'); Serial.println(wave(i));
     if (i == 0) {
         h = (h + 45) % 256;
     }
