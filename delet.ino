@@ -1,4 +1,6 @@
-#include <Arduino.h>
+#include <WiFiSettings.h>
+#include <ArduinoOTA.h>
+#include <LittleFS.h>
 #include <FastLED.h>
 
 #define DATA_PIN_LED D8
@@ -29,32 +31,108 @@ const int cycle_int[] = {20, 15, 3, 6, 8, 8};   // cycle step interval per mode
 
 int mode = MODE_COLOR_WHEEL;
 int mode_reset = 0;
+int t_reset;
+bool portal_on = true;
 
 static CRGB leds[4];
 int i = 0;
 int h = 64; // hue, not used in every mode
 
+// Start ArduinoOTA via WiFiSettings with the same hostname and password
+void setup_ota() {
+    ArduinoOTA.setHostname(WiFiSettings.hostname.c_str());
+    ArduinoOTA.setPassword(WiFiSettings.password.c_str());
+    ArduinoOTA.begin();
+
+    ArduinoOTA.onStart([]() {
+        h = 160;    // blue
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        showProgress(map(progress, 0, total, 0, 100));
+    });
+    ArduinoOTA.onEnd([]() {
+        leds[0] = leds[2] = CRGB::Green;
+        FastLED.show();
+    });
+}
+
+int p = 0;
+void setup_wifi() {
+    WiFiSettings.secure = true;
+    WiFiSettings.hostname = "delet";
+
+    WiFiSettings.onPortal = []() {
+        setup_ota();
+    };
+    WiFiSettings.onPortalWaitLoop = []() {
+        ArduinoOTA.handle();
+        progress(p = (p + 1) % cycle_length[MODE_PROGRESS]);
+        FastLED.show();
+    };
+    WiFiSettings.onConnect = []() {
+        h = 96; // green
+        portal_on = false;
+    };
+
+    WiFiSettings.connect();
+
+    Serial.print("Password: ");
+    Serial.println(WiFiSettings.password);
+}
+
 void setup(void)
 {
     Serial.begin(115200);
-
     FastLED.addLeds < WS2811, DATA_PIN_LED > (leds, 4);
+    showProgress(0);
+
+    LittleFS.begin();  // Will format on the first run after failing to mount
+    showProgress(25);
+
+    setup_wifi(); showProgress(50);
+    setup_ota(); showProgress(75);
+
     pinMode(SWITCH_PIN, INPUT_PULLUP);
+
+    showProgress(100);
 }
 
 void loop(void)
 {
+    ArduinoOTA.handle();
+
     i = (i + 1) % cycle_length[mode];
 
     if (!mode_reset && digitalRead(SWITCH_PIN) == LOW) {
         mode_reset = 1;
+        t_reset = millis();
         mode = (mode + 1) % N_MODES;
         Serial.print("new mode: "); Serial.println(mode);
         Serial.print("h = "); Serial.println(h);
 
         i = 0;
-    } else if (mode_reset && digitalRead(SWITCH_PIN) == HIGH) {
-        mode_reset = 0;
+    } else if (mode_reset) {
+        if (digitalRead(SWITCH_PIN) == HIGH) {
+            mode_reset = 0;
+
+            if (millis() - t_reset > 3e3) {
+                h = map(ESP.getFreeHeap(), 0, 81920, 0, 160);
+                showProgress(map(ESP.getFreeHeap(), 0, 81920, 0, 100));
+                delay(5e3);
+            }
+        } else if (!portal_on) {
+            const int reset_time = millis() - t_reset;
+            if (reset_time > 10e3) {
+                portal_on = true;
+                WiFiSettings.portal();
+            }
+            if (reset_time > 1e3) {
+                h = 0;
+                showProgress(reset_time/100);
+                delay(10);
+                return;
+            }
+        }
     }
 
     if (mode == MODE_COLOR_WHEEL) {
@@ -117,6 +195,8 @@ void progress(int p, int o) // wind-on wind-off progress/loading animation
     leds[2] = CHSV(h, 255, upramp(p - 256 + 2*o) - upramp(p - 768 + 6*o));
     leds[1] = CHSV(h, 255, upramp(p - 384 + 3*o) - upramp(p - 896 + 7*o));
 }
+
+void showProgress(int p) { progress(map(p, 0, 100, 0, 512), 0); FastLED.show(); }
 
 void scanner(int i) { scanner(2*i, scanner_overlap); }
 void scanner(int i, int o)  // rotary larson scanner :)
