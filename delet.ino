@@ -30,7 +30,7 @@ const int cycle_int[] = {20, 20, 3, 6, 8, 8};   // cycle step interval per mode
 #define N_MODES 6
 
 int mode = MODE_COLOR_WHEEL;
-int mode_reset = 0;
+bool mode_reset = false;
 int t_reset;
 bool portal_on = true;
 
@@ -51,7 +51,7 @@ void setup_ota() {
         showProgress(map(progress, 0, total, 0, 100));
     });
     ArduinoOTA.onEnd([]() {
-        leds[0] = leds[2] = CRGB::Green;
+        leds[0] = leds[2] = CRGB::Lime;
         FastLED.show();
     });
 }
@@ -104,25 +104,26 @@ void loop(void)
     i = (i + 1) % cycle_length[mode];
 
     if (!mode_reset && digitalRead(SWITCH_PIN) == LOW) {
-        mode_reset = 1;
+        mode_reset = true;
         t_reset = millis();
         mode = (mode + 1) % N_MODES;
+
         Serial.print("new mode: "); Serial.println(mode);
         Serial.print("h = "); Serial.println(h);
 
         i = 0;
     } else if (mode_reset) {
         if (digitalRead(SWITCH_PIN) == HIGH) {
-            mode_reset = 0;
+            mode_reset = false;
 
-            if (millis() - t_reset > 3e3) {
+            if (millis() - t_reset > 3e3) { // show heap indicator after 3 second press
                 h = map(ESP.getFreeHeap(), 0, 81920, 0, 160);
                 showProgress(map(ESP.getFreeHeap(), 0, 81920, 0, 100));
                 delay(5e3);
             }
         } else if (!portal_on) {
             const int reset_time = millis() - t_reset;
-            if (reset_time > 10e3) {
+            if (reset_time > 10e3) {    // turn on captive portal after 10 second press
                 portal_on = true;
                 WiFiSettings.portal();
             }
